@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env/
+.venv/
+.pytest_cache/
+.DS_Store
+
+# Ignore the large dataset repository we downloaded
+data/NASADefectDataset-master/
+
+# (Optional) Ignore the trained model if you don't want to store binary blobs in git
+# models/defect_model.pkl

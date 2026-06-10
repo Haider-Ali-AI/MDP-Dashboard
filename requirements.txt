@@ -1,0 +1,15 @@
+# ─── Core Data Science ───────────────────────────────────────────────────────
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+
+# ─── Imbalance Handling ───────────────────────────────────────────────────────
+imbalanced-learn>=0.11.0
+
+# ─── Visualisation / Frontend ─────────────────────────────────────────────────
+streamlit>=1.32.0
+plotly>=5.18.0
+
+# ─── Optional: faster XGBoost alternative to Random Forest ───────────────────
+# xgboost>=2.0.0
