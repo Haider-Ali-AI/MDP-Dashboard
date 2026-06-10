@@ -330,7 +330,7 @@ with st.sidebar:
     st.markdown("### ⚙️ Data Configuration")
     csv_path = st.text_input(
         "Dataset Path (.arff or .csv)",
-        value="data/NASADefectDataset-master/OriginalData/MDP/KC1.arff",
+        value="data/KC1.arff",
         help="Relative or absolute path to the NASA MDP ARFF or CSV file.",
     )
     model_path = st.text_input(

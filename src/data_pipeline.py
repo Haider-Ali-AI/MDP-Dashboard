@@ -359,7 +359,7 @@ def run_pipeline(data_path: str):
 if __name__ == "__main__":
     data_file = (
         sys.argv[1] if len(sys.argv) > 1
-        else "data/NASADefectDataset-master/OriginalData/MDP/KC1.arff"
+        else "data/KC1.arff"
     )
 
     X_train, X_test, y_train, y_test, features, df_full = run_pipeline(data_file)
