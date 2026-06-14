@@ -196,14 +196,14 @@ st.markdown("""
 .floating-chat-marker {
     display: none;
 }
-div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testid="element-container"] {
+div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] {
     position: fixed !important;
     bottom: 30px !important;
     right: 30px !important;
     z-index: 999999 !important;
     pointer-events: auto !important;
 }
-div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testid="element-container"] button {
+div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] button {
     width: 60px !important;
     height: 60px !important;
     border-radius: 50% !important;
@@ -219,7 +219,7 @@ div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testi
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     pointer-events: auto !important;
 }
-div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testid="element-container"] button:hover {
+div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] button:hover {
     transform: scale(1.1) rotate(5deg) !important;
     box-shadow: 0 8px 30px rgba(34, 211, 197, 0.65) !important;
 }
@@ -228,7 +228,7 @@ div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testi
 .floating-chat-panel-marker {
     display: none;
 }
-div[data-testid="element-container"]:has(.floating-chat-panel-marker) + div[data-testid="element-container"] {
+div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data-testid="element-container"] {
     position: fixed !important;
     bottom: 105px !important;
     right: 30px !important;
@@ -249,7 +249,7 @@ div[data-testid="element-container"]:has(.floating-chat-panel-marker) + div[data
     animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     pointer-events: auto !important;
 }
-div[data-testid="element-container"]:has(.floating-chat-panel-marker) + div[data-testid="element-container"] * {
+div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data-testid="element-container"] * {
     pointer-events: auto !important;
     user-select: auto !important;
 }
