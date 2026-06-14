@@ -11,5 +11,13 @@ imbalanced-learn>=0.11.0
 streamlit>=1.32.0
 plotly>=5.18.0
 
-# ─── Optional: faster XGBoost alternative to Random Forest ───────────────────
-# xgboost>=2.0.0
+# ─── Real-Time API Layer ──────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn>=0.30.0
+httpx>=0.27.0
+
+# ─── LLM Agent ────────────────────────────────────────────────────────────────
+google-generativeai>=0.7.0
+
+# ─── Utility ──────────────────────────────────────────────────────────────────
+tabulate>=0.9.0

@@ -335,8 +335,128 @@ def save_artefact(clf, metrics: dict, feature_names: list, output_path: str = MO
     logger.info("Artefact saved → %s  (%.1f KB)", output_path, size_kb)
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Continuous Learning: retrain_pipeline()
+# ─────────────────────────────────────────────────────────────────────────────
+
+def retrain_pipeline(
+    db_path:          str = "data/telemetry.db",
+    fallback_arff:    str = "data/KC1.arff",
+    model_output:     str = MODEL_OUTPUT_PATH,
+    min_rows:         int = 100,
+) -> dict:
+    """
+    Pull all records from the live SQLite telemetry database, apply SMOTE,
+    run a RandomizedSearchCV hyperparameter search over the Random Forest,
+    sweep the optimal decision threshold, and overwrite the production model.
+
+    Falls back to the original ARFF file if the database is empty or
+    contains fewer than *min_rows* records.
+
+    Parameters
+    ----------
+    db_path       : str  – Path to the SQLite database.
+    fallback_arff : str  – Original ARFF path used when DB is insufficient.
+    model_output  : str  – Where to write the new model artefact.
+    min_rows      : int  – Minimum DB rows required before using DB data.
+
+    Returns
+    -------
+    dict – New evaluation metrics (same structure as evaluate_model()).
+    """
+    from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
+    import pandas as pd
+
+    logger.info("=" * 60)
+    logger.info("  CONTINUOUS LEARNING – RETRAIN PIPELINE")
+    logger.info("=" * 60)
+
+    # ── Step 1: Source the training data ──────────────────────────────────
+    use_db = False
+    if os.path.isfile(db_path):
+        try:
+            sys.path.insert(
+                0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            )
+            from src.database import get_dataframe, FEATURE_COLS, ALL_COLS
+            df_db = get_dataframe()
+            if len(df_db) >= min_rows:
+                use_db = True
+                logger.info("Using database: %d rows.", len(df_db))
+        except Exception as exc:
+            logger.warning("Could not read DB (%s). Falling back to ARFF.", exc)
+
+    if use_db:
+        df_db = df_db.dropna(subset=["defective"])
+        feature_names = [c for c in FEATURE_COLS if c in df_db.columns]
+        X = df_db[feature_names].fillna(0).values.astype(np.float32)
+        y = df_db["defective"].values.astype(np.int32)
+    else:
+        logger.info("Falling back to ARFF: %s", fallback_arff)
+        X_tr, X_te, y_tr, y_te, feature_names, _ = run_pipeline(fallback_arff)
+        X = np.vstack([X_tr, X_te])
+        y = np.concatenate([y_tr, y_te])
+
+    # ── Step 2: Stratified split ──────────────────────────────────────────
+    from sklearn.model_selection import train_test_split as _tts
+    X_train, X_test, y_train, y_test = _tts(
+        X, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
+    )
+
+    # ── Step 3: SMOTE on training split only ──────────────────────────────
+    X_bal, y_bal = apply_smote(X_train, y_train)
+
+    # ── Step 4: RandomizedSearchCV ────────────────────────────────────────
+    param_dist = {
+        "n_estimators":    [100, 200, 300, 400],
+        "max_depth":       [None, 10, 20, 30],
+        "min_samples_leaf":[1, 2, 4],
+        "max_features":    ["sqrt", "log2"],
+        "class_weight":    ["balanced", "balanced_subsample"],
+    }
+    base_clf = RandomForestClassifier(random_state=RANDOM_STATE, n_jobs=-1)
+    search = RandomizedSearchCV(
+        base_clf,
+        param_distributions=param_dist,
+        n_iter=15,                          # 15 random combos – fast enough for interactive use
+        scoring="recall",                   # Optimise primary metric
+        cv=StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE),
+        random_state=RANDOM_STATE,
+        n_jobs=-1,
+        verbose=0,
+    )
+    logger.info("Running RandomizedSearchCV (15 iterations, 3-fold CV) …")
+    search.fit(X_bal, y_bal)
+    best_params = search.best_params_
+    logger.info("Best params: %s", best_params)
+
+    # Refit on full balanced training set with best params.
+    clf = RandomForestClassifier(
+        **best_params,
+        oob_score=True,
+        n_jobs=-1,
+        random_state=RANDOM_STATE,
+    )
+    clf.fit(X_bal, y_bal)
+    logger.info("OOB accuracy: %.4f", clf.oob_score_)
+
+    # ── Step 5: Threshold sweep ───────────────────────────────────────────
+    best_threshold = optimise_threshold(clf, X_test, y_test)
+
+    # ── Step 6: Evaluate ─────────────────────────────────────────────────
+    metrics = evaluate_model(clf, X_test, y_test, best_threshold, feature_names)
+    metrics["best_params"] = best_params   # Store tuned params in artefact.
+
+    # ── Step 7: Save ─────────────────────────────────────────────────────
+    save_artefact(clf, metrics, feature_names, model_output)
+    logger.info("Continuous learning cycle complete.")
+    return metrics
+
+
 # ---------------------------------------------------------------------------
-# Main Training Function
+# Main Training Function (original – used for initial training from ARFF)
 # ---------------------------------------------------------------------------
 def train(csv_path: str):
     """
@@ -345,7 +465,7 @@ def train(csv_path: str):
 
     Parameters
     ----------
-    csv_path : str  –  Path to the raw NASA MDP CSV file.
+    csv_path : str  –  Path to the raw NASA MDP ARFF or CSV file.
     """
     logger.info("=" * 60)
     logger.info("  NASA MDP Defect Predictor – Training Pipeline")
@@ -377,5 +497,19 @@ def train(csv_path: str):
 # CLI Entry Point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    csv_file = sys.argv[1] if len(sys.argv) > 1 else "data/KC1.csv"
-    train(csv_file)
+    import argparse
+    parser = argparse.ArgumentParser(description="NASA MDP Defect Predictor – Training CLI")
+    parser.add_argument("data_path", nargs="?", default="data/KC1.arff",
+                        help="Path to raw ARFF or CSV dataset.")
+    parser.add_argument("--retrain", action="store_true",
+                        help="Run continuous learning from the live SQLite DB.")
+    args = parser.parse_args()
+
+    if args.retrain:
+        metrics = retrain_pipeline()
+        print("\n-- Retraining complete --")
+        print("  Recall  : {:.4f}".format(metrics['recall']))
+        print("  F1      : {:.4f}".format(metrics['f1']))
+        print("  ROC-AUC : {:.4f}".format(metrics['roc_auc']))
+    else:
+        train(args.data_path)
