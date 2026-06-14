@@ -422,7 +422,7 @@ defective           INTEGER  – Ground truth label (0=clean, 1=defective)
         # Function calling loop
         for _ in range(5):
             payload = {
-                "model": "llama-3.3-70b-specdec",
+                "model": "llama-3.3-70b-versatile",
                 "messages": [{"role": "system", "content": self._build_system_prompt()}] + self._groq_history,
                 "tools": groq_tools,
                 "tool_choice": "auto"
