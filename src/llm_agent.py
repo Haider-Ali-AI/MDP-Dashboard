@@ -95,7 +95,20 @@ class DefectAnalysisAgent:
         self._api_key      = api_key
         self._model        = None
         self._chat         = None
-        self._init_gemini()
+        self.use_groq      = False
+        
+        # Load Groq key fallback (never hardcoded to comply with push protection)
+        try:
+            import streamlit as st
+            self._groq_api_key = st.secrets.get("GROQ_API_KEY", os.environ.get("GROQ_API_KEY", ""))
+        except Exception:
+            self._groq_api_key = os.environ.get("GROQ_API_KEY", "")
+
+        try:
+            self._init_gemini()
+        except Exception as e:
+            logger.warning("Failed to initialize Gemini agent, falling back to Groq: %s", e)
+            self.use_groq = True
 
     # ──────────────────────────────────────────────────────────────────────
     # Initialisation
@@ -330,21 +343,165 @@ defective           INTEGER  – Ground truth label (0=clean, 1=defective)
         return f"Navigating to tab {tab_index} ({tab_name})."
 
     # ──────────────────────────────────────────────────────────────────────
-    # Manual Function-Calling Loop
     # ──────────────────────────────────────────────────────────────────────
+    # Groq Fallback Implementation
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _chat_groq(self, message: str) -> dict:
+        """Fallback chat using Groq Cloud REST API with Llama-3.3-70b."""
+        import httpx
+        import json
+
+        if not hasattr(self, "_groq_history"):
+            self._groq_history = []
+
+        self._groq_history.append({"role": "user", "content": message})
+
+        # Describe the tools in standard JSON schema format for Groq/OpenAI API
+        groq_tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "_tool_run_db_query",
+                    "description": "Execute a read-only SQL SELECT query against the engineering_telemetry SQLite database and return the results as a Markdown table.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "sql": {
+                                "type": "string",
+                                "description": "A valid SQLite SELECT statement."
+                            }
+                        },
+                        "required": ["sql"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "_tool_trigger_retrain",
+                    "description": "Trigger a full model retraining cycle using all records in the live SQLite database. Applies SMOTE and RandomizedSearchCV, then overwrites the production model artefact.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "_tool_navigate_dashboard",
+                    "description": "Navigate the Streamlit dashboard to a specific tab.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "tab_name": {
+                                "type": "string",
+                                "description": "Name of the target tab: overview, deep-dive, ml insights, risk predictor, telemetry."
+                            },
+                            "highlight_metric": {
+                                "type": "string",
+                                "description": "Optional metric or feature name to highlight on the target tab."
+                            }
+                        },
+                        "required": ["tab_name"]
+                    }
+                }
+            }
+        ]
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self._groq_api_key}",
+            "Content-Type": "application/json"
+        }
+
+        tool_calls_made = []
+        self._pending_state_action = None
+
+        # Function calling loop
+        for _ in range(5):
+            payload = {
+                "model": "llama-3.3-70b-specdec",
+                "messages": [{"role": "system", "content": self._build_system_prompt()}] + self._groq_history,
+                "tools": groq_tools,
+                "tool_choice": "auto"
+            }
+            try:
+                response = httpx.post(url, headers=headers, json=payload, timeout=30.0)
+                if response.status_code != 200:
+                    logger.error("Groq API error: %s", response.text)
+                    return {
+                        "text": f"⚠️ Groq API Error (Status {response.status_code}): {response.text}",
+                        "tool_calls": tool_calls_made,
+                        "state_action": None
+                    }
+                res_data = response.json()
+                choice = res_data["choices"][0]
+                res_msg = choice["message"]
+
+                # Check for tool calls
+                if "tool_calls" in res_msg and res_msg["tool_calls"]:
+                    self._groq_history.append(res_msg)
+
+                    for tc in res_msg["tool_calls"]:
+                        fn_name = tc["function"]["name"]
+                        fn_args = json.loads(tc["function"]["arguments"]) if tc["function"]["arguments"] else {}
+                        tc_id = tc["id"]
+
+                        logger.info("Groq tool call: %s(%s)", fn_name, fn_args)
+                        tool_calls_made.append(fn_name)
+
+                        # Dispatch
+                        tool_map = {
+                            "_tool_run_db_query":        self._tool_run_db_query,
+                            "_tool_trigger_retrain":     self._tool_trigger_retrain,
+                            "_tool_navigate_dashboard":  self._tool_navigate_dashboard,
+                        }
+                        fn = tool_map.get(fn_name)
+                        if fn is None:
+                            result_str = f"Unknown tool: {fn_name}"
+                        else:
+                            try:
+                                result_str = fn(**fn_args) if fn_args else fn()
+                            except Exception as exc:
+                                result_str = f"Tool execution error: {exc}"
+
+                        self._groq_history.append({
+                            "role": "tool",
+                            "name": fn_name,
+                            "tool_call_id": tc_id,
+                            "content": result_str
+                        })
+                    continue
+                else:
+                    self._groq_history.append(res_msg)
+                    return {
+                        "text": res_msg.get("content", ""),
+                        "tool_calls": tool_calls_made,
+                        "state_action": self._pending_state_action
+                    }
+            except Exception as e:
+                logger.error("Error in Groq fallback chat: %s", e)
+                return {
+                    "text": f"⚠️ Groq fallback chat error: {e}",
+                    "tool_calls": tool_calls_made,
+                    "state_action": None
+                }
+        return {
+            "text": "I completed the requested action.",
+            "tool_calls": tool_calls_made,
+            "state_action": self._pending_state_action
+        }
 
     def chat(self, message: str) -> dict:
         """
         Send a user message, execute any requested tool calls, and return
-        the final assistant reply.
-
-        Returns
-        -------
-        dict with keys:
-          text         : str   – Final text response from the model.
-          tool_calls   : list  – Names of tools invoked during this turn.
-          state_action : dict | None – Navigation/state change for Streamlit.
+        the final assistant reply (falls back transparently to Groq if Gemini fails).
         """
+        if self.use_groq:
+            return self._chat_groq(message)
+
         import google.generativeai as genai
 
         tool_calls_made = []
@@ -417,9 +574,6 @@ defective           INTEGER  – Ground truth label (0=clean, 1=defective)
             }
 
         except Exception as exc:
-            logger.error("Agent chat error: %s", exc)
-            return {
-                "text":       f"⚠️ Agent error: {exc}",
-                "tool_calls": tool_calls_made,
-                "state_action": None,
-            }
+            logger.warning("Gemini chat failed, falling back dynamically to Groq: %s", exc)
+            self.use_groq = True
+            return self._chat_groq(message)

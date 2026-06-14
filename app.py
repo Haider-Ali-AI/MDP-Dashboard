@@ -37,6 +37,15 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 
+# Manual .env loading (safe from push protection)
+if os.path.isfile(".env"):
+    with open(".env") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k.strip()] = v.strip()
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 warnings.filterwarnings("ignore")
 
@@ -375,12 +384,12 @@ with st.sidebar:
     min_loc   = st.slider("Min. Lines of Code", 0, 2000, 0, 10)
     min_cyclo = st.slider("Min. Cyclomatic Complexity", 0, 100, 0, 1)
 
-    # Gemini API key – use st.secrets if available, else use user's key.
+    # Gemini API key – use st.secrets if available, else load from env.
     gemini_key = ""
     try:
-        gemini_key = st.secrets["GOOGLE_API_KEY"]
+        gemini_key = st.secrets.get("GOOGLE_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
     except Exception:
-        gemini_key = "AIzaSyCjzTMkcL9K23H2_RXp9XVHWYCOOGW4gpw"
+        gemini_key = os.environ.get("GOOGLE_API_KEY", "")
 
     st.markdown("""
     <hr style='border-color:rgba(255,255,255,0.08);margin:1rem 0;'>
