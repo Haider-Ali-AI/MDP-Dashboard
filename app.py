@@ -205,14 +205,16 @@ st.markdown("""
 .floating-chat-marker {
     display: none;
 }
-div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] {
+div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"],
+div[data-testid="stElementContainer"]:has(.floating-chat-marker) ~ div[data-testid="stElementContainer"] {
     position: fixed !important;
     bottom: 30px !important;
     right: 30px !important;
     z-index: 999999 !important;
     pointer-events: auto !important;
 }
-div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] button {
+div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] button,
+div[data-testid="stElementContainer"]:has(.floating-chat-marker) ~ div[data-testid="stElementContainer"] button {
     width: 60px !important;
     height: 60px !important;
     border-radius: 50% !important;
@@ -228,7 +230,8 @@ div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testi
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     pointer-events: auto !important;
 }
-div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] button:hover {
+div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testid="element-container"] button:hover,
+div[data-testid="stElementContainer"]:has(.floating-chat-marker) ~ div[data-testid="stElementContainer"] button:hover {
     transform: scale(1.1) rotate(5deg) !important;
     box-shadow: 0 8px 30px rgba(34, 211, 197, 0.65) !important;
 }
@@ -237,7 +240,8 @@ div[data-testid="element-container"]:has(.floating-chat-marker) ~ div[data-testi
 .floating-chat-panel-marker {
     display: none;
 }
-div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data-testid="element-container"] {
+div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data-testid="element-container"],
+div[data-testid="stElementContainer"]:has(.floating-chat-panel-marker) ~ div[data-testid="stElementContainer"] {
     position: fixed !important;
     bottom: 105px !important;
     right: 30px !important;
@@ -258,7 +262,8 @@ div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data
     animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
     pointer-events: auto !important;
 }
-div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data-testid="element-container"] * {
+div[data-testid="element-container"]:has(.floating-chat-panel-marker) ~ div[data-testid="element-container"] *,
+div[data-testid="stElementContainer"]:has(.floating-chat-panel-marker) ~ div[data-testid="stElementContainer"] * {
     pointer-events: auto !important;
     user-select: auto !important;
 }
@@ -1070,8 +1075,9 @@ if st.session_state.show_chat:
         """, unsafe_allow_html=True)
         
         # Check API key
-        if not gemini_key:
-            st.warning("⚠️ No Gemini API key loaded.")
+        groq_key = os.environ.get("GROQ_API_KEY", "")
+        if not gemini_key and not groq_key:
+            st.warning("⚠️ No Gemini or Groq API key loaded. Configure GOOGLE_API_KEY or GROQ_API_KEY in secrets.")
         else:
             # Load model metrics and df for the agent
             model_metrics_for_agent = artefact["metrics"] if MODEL_LOADED and artefact else None
