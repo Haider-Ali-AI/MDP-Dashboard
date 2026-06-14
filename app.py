@@ -201,6 +201,7 @@ div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testi
     bottom: 30px !important;
     right: 30px !important;
     z-index: 999999 !important;
+    pointer-events: auto !important;
 }
 div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testid="element-container"] button {
     width: 60px !important;
@@ -216,6 +217,7 @@ div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testi
     justify-content: center !important;
     border: 1px solid rgba(255, 255, 255, 0.25) !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    pointer-events: auto !important;
 }
 div[data-testid="element-container"]:has(.floating-chat-marker) + div[data-testid="element-container"] button:hover {
     transform: scale(1.1) rotate(5deg) !important;
@@ -245,6 +247,11 @@ div[data-testid="element-container"]:has(.floating-chat-panel-marker) + div[data
     overflow: hidden !important;
     backdrop-filter: blur(25px) !important;
     animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    pointer-events: auto !important;
+}
+div[data-testid="element-container"]:has(.floating-chat-panel-marker) + div[data-testid="element-container"] * {
+    pointer-events: auto !important;
+    user-select: auto !important;
 }
 
 @keyframes slideIn {
@@ -1112,12 +1119,20 @@ if st.session_state.show_chat:
                                 )
                                 st.markdown(tools_html, unsafe_allow_html=True)
 
-                # Chat input
-                user_prompt = st.chat_input(
-                    "Ask CodeSentinel ...", key="chat_input_fab"
-                )
+                # Chat input via Form to ensure clickability and auto-clearing
+                with st.form(key="chat_input_form", clear_on_submit=True, border=False):
+                    ic1, ic2 = st.columns([5, 1])
+                    with ic1:
+                        user_prompt = st.text_input(
+                            "Ask CodeSentinel...",
+                            placeholder="Type a message and hit enter...",
+                            key="chat_input_text",
+                            label_visibility="collapsed"
+                        )
+                    with ic2:
+                        submit_btn = st.form_submit_button("Send", use_container_width=True)
 
-                if user_prompt:
+                if submit_btn and user_prompt:
                     # Append user message.
                     st.session_state.chat_history.append({"role": "user", "content": user_prompt})
 
